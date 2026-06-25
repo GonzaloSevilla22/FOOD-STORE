@@ -136,7 +136,8 @@ npm run dev   # Arranca en http://localhost:5500
 
 ```bash
 docker-compose up -d
-# Configurar DATABASE_URL en .env para PostgreSQL
+# En .env configurar (el contenedor expone el puerto 5433 en el host):
+# DATABASE_URL=postgresql://postgres:postgres@localhost:5433/food_store_db
 ```
 
 

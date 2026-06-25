@@ -47,25 +47,36 @@ def register(
 @router.post("/login", response_model=TokenResponse)
 def login(
     data: LoginRequest,
+    response: Response,
     svc: AuthService = Depends(get_auth_service),
 ) -> TokenResponse:
     """
     Autenticar usuario y obtener JWT token.
-    
-    El token se devuelve en la respuesta JSON (access_token).
-    Cada pestaña del navegador almacena su propio token en sessionStorage
-    para evitar que usuarios de distintas pestañas se pisen entre sí.
-    
+
+    El token se devuelve en la respuesta JSON (access_token) y también en una
+    cookie httpOnly `access_token` (consigna §4.1). El cliente Bearer sigue
+    funcionando: lee el token del body; la cookie no interfiere.
+
     Parámetros:
     - **email**: Email del usuario
     - **password**: Contraseña
-    
+
     Retorna:
     - **access_token**: JWT token para usar en Authorization header
     - **token_type**: Tipo de token (Bearer)
+    - **expires_in**: Segundos hasta la expiración del access_token
     - **usuario**: Información del usuario autenticado
     """
-    return svc.login(data)
+    result = svc.login(data)
+    response.set_cookie(
+        key=settings.COOKIE_NAME,
+        value=result.access_token,
+        httponly=True,
+        samesite=settings.COOKIE_SAMESITE,
+        secure=settings.COOKIE_SECURE,
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    )
+    return result
 
 
 @router.post("/refresh", response_model=TokenResponse)

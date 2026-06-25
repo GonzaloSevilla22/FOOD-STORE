@@ -130,6 +130,7 @@ class AuthService:
             access_token=token,
             refresh_token=refresh,
             token_type="Bearer",
+            expires_in=30 * 60,
             usuario=self._to_public(usuario),
             roles=roles,
         )
@@ -169,6 +170,7 @@ class AuthService:
             access_token=token,
             refresh_token=refresh,
             token_type="Bearer",
+            expires_in=30 * 60,
             usuario=self._to_public(usuario),
             roles=roles,
         )

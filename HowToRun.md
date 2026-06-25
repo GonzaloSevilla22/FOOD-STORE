@@ -29,6 +29,6 @@ npm run dev
 
 ---
 
-> **Usar PostgreSQL (opcional):** Editar `.env`, descomentar `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/food_store_db` y ejecutar `docker-compose up -d`.
+> **Usar PostgreSQL (opcional):** Ejecutar `docker-compose up -d` y editar `.env` con `DATABASE_URL=postgresql://postgres:postgres@localhost:5433/food_store_db`. El contenedor expone el puerto **5433** en el host (mapeo `5433:5432` del `docker-compose.yml`).
 >
 > **Probar:** `pytest -v`

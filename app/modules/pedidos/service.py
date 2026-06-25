@@ -118,6 +118,32 @@ class PedidoService:
         except ValueError as e:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
+    @staticmethod
+    def _stock_disponible(producto) -> int | None:
+        """Unidades vendibles del producto: stock_manual, o el mínimo que habilitan
+        los ingredientes (floor(stock_ingrediente / cantidad_receta)).
+
+        Devuelve None cuando el producto no tiene límite de stock conocido (sin
+        stock_manual ni ingredientes). Réplica de la métrica de productos/service.py.
+        """
+        if producto.usa_stock_manual:
+            return producto.stock_manual
+        relaciones = list(producto.productos_ingredientes)
+        if relaciones:
+            candidatos: list[int] = []
+            for rel in relaciones:
+                ingrediente = rel.ingrediente
+                if ingrediente is None:
+                    continue
+                if rel.cantidad and float(rel.cantidad) > 0:
+                    candidatos.append(int(float(ingrediente.stock_actual) // float(rel.cantidad)))
+            if candidatos:
+                return min(candidatos)
+            return None
+        if producto.stock_manual is not None:
+            return producto.stock_manual
+        return None
+
     def __init__(self, session: Session) -> None:
         self._session = session
         self._pedido_repo = PedidoRepository(session)
@@ -195,6 +221,15 @@ class PedidoService:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail=f"Producto {producto.nombre} no disponible",
+                    )
+
+                # Pre-validación de stock (no descuenta — eso ocurre al confirmar).
+                # Rechaza el pedido si el producto no puede cubrir la cantidad pedida.
+                disponible_stock = self._stock_disponible(producto)
+                if disponible_stock is not None and disponible_stock < detalle_data.cantidad:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Stock insuficiente de {producto.nombre}",
                     )
 
                 subtotal_detalle = producto.precio_base * Decimal(detalle_data.cantidad)
@@ -298,6 +333,15 @@ class PedidoService:
                         detail=f"Producto {producto.nombre} no disponible",
                     )
 
+                # Pre-validación de stock (no descuenta — eso ocurre al confirmar).
+                # Rechaza el pedido si el producto no puede cubrir la cantidad pedida.
+                disponible_stock = self._stock_disponible(producto)
+                if disponible_stock is not None and disponible_stock < detalle_data.cantidad:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Stock insuficiente de {producto.nombre}",
+                    )
+
                 subtotal_detalle = producto.precio_base * Decimal(detalle_data.cantidad)
                 detalles_list.append({
                     "producto_id": producto.id,
@@ -380,6 +424,10 @@ class PedidoService:
             detalles = uow.detalles.get_by_pedido_id(pedido_id)
             producto_ids_afectados: set[int] = set()
             for detalle in detalles:
+                # Descuento real de stock (ingredientes o stock_manual) DENTRO de la
+                # transacción UoW. Si algún ítem no alcanza, _aplicar_stock lanza 400
+                # y el UoW hace rollback → la confirmación es atómica.
+                self._aplicar_stock(uow, detalle.producto_id, detalle.cantidad, multiplicador=1)
                 producto_ids_afectados.add(detalle.producto_id)
 
             pedido_anterior_codigo = pedido.estado_codigo
@@ -602,6 +650,14 @@ class PedidoService:
                     )
 
             estado_destino_codigo = normalize_state(data.estado_codigo)
+
+            # RN-05: el motivo es obligatorio cuando el nuevo estado es CANCELADO.
+            if estado_destino_codigo == STATE_CANCELADO and not (data.motivo and data.motivo.strip()):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="El motivo es obligatorio para cancelar un pedido (RN-05)",
+                )
+
             estado_destino = uow.estados.get_by_codigo(estado_destino_codigo)
             if not estado_destino:
                 raise HTTPException(

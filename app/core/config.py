@@ -38,7 +38,8 @@ class Settings(BaseSettings):
 
     # Base de datos — se puede sobreescribir desde .env
     # SQLite (por defecto): sqlite:///./food_store.db
-    # PostgreSQL: postgresql://postgres:postgres@localhost:5432/food_store_db
+    # PostgreSQL (docker-compose expone el puerto 5433 en el host):
+    #   postgresql://postgres:postgres@localhost:5433/food_store_db
     DATABASE_URL: str = "sqlite:///./food_store.db"
 
     @computed_field

@@ -88,6 +88,7 @@ class TokenResponse(SQLModel):
     access_token: str
     refresh_token: str
     token_type: str
+    expires_in: int = 1800  # segundos hasta expirar el access_token (consigna §6.1)
     usuario: UsuarioPublic
     roles: List[str] = Field(default_factory=list)  # códigos de rol
 
