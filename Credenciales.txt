@@ -5,13 +5,13 @@ correr Docker compose up -d
 python -m uvicorn main:app --reload --port 8000 (BACKEND)
 npm run dev (Frontend)
 correr ngrok con (ngrok http 8000)                   
-ngrok config add-authtoken 3FMC6uZLHF1r0XAEZiKakfBs8TR_6tECAm6zZbJqbmVvo7bMn                                                                             
+ngrok config add-authtoken <TU_NGROK_AUTHTOKEN>   # obtenelo en https://dashboard.ngrok.com/get-started/your-authtoken                                                                             
                                                                                              
 
 MERCADO PAGO
 User ID:3485467036
 Usuario:TESTUSER4092534158472549850
-Contraseña:dKYhvn23Kk
+Contraseña:<REDACTADO>
 
 
 5031 7557 3453 0604 EXPI
