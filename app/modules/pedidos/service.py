@@ -277,6 +277,17 @@ class PedidoService:
                 )
                 uow.detalles.add(detalle)
 
+            # RN-02: primera transición del historial con estado_desde = NULL.
+            historial_inicial = HistorialEstadoPedido(
+                pedido_id=pedido.id,
+                estado_desde_codigo=None,
+                estado_hacia_codigo=STATE_PENDIENTE,
+                usuario_id=usuario_id,
+                motivo="Pedido creado",
+                fecha=datetime.now(timezone.utc),
+            )
+            uow.historial.add(historial_inicial)
+
             detalles = uow.detalles.get_by_pedido_id(pedido.id)
             response = ConfirmarPedidoResponse(
                 id=pedido.id,

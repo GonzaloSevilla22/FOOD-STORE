@@ -623,7 +623,7 @@ export interface PedidoDetail {
 export interface HistorialEstadoPedidoPublic {
   id: number;
   pedido_id: number;
-  estado_desde_codigo: string;
+  estado_desde_codigo: string | null; // RN-02: null en la transición inicial
   estado_hacia_codigo: string;
   usuario_id: number | null;
   motivo: string | null;

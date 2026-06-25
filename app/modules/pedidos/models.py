@@ -134,7 +134,8 @@ class HistorialEstadoPedido(BaseModel, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
     pedido_id: int = Field(foreign_key="pedidos.id", nullable=False, index=True)
-    estado_desde_codigo: str = Field(foreign_key="estados_pedido.codigo", max_length=50, nullable=False)
+    # RN-02: la primera transición (creación del pedido) tiene estado_desde = NULL.
+    estado_desde_codigo: Optional[str] = Field(default=None, foreign_key="estados_pedido.codigo", max_length=50, nullable=True)
     estado_hacia_codigo: str = Field(foreign_key="estados_pedido.codigo", max_length=50, nullable=False)
     usuario_id: Optional[int] = Field(foreign_key="usuarios.id", nullable=True)
     motivo: Optional[str] = Field(default=None, nullable=True)

@@ -348,6 +348,7 @@ function ProductoIngredientsEditor({
       cantidad: 1,
       unidad_medida_id: enumAUnidadMedidaId[nextIngrediente.unidad_medida] ?? 0,
       es_removible: true,
+      es_opcional: false,
     };
 
     setForm((previous) => ({

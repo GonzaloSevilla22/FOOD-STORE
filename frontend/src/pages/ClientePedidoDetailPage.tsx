@@ -300,8 +300,8 @@ export function ClientePedidoDetailPage(): JSX.Element {
               <div key={h.id} className="flex items-start gap-3 rounded-lg border border-orange-50 dark:border-gray-500 bg-orange-50 dark:bg-gray-800/50 p-3">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 text-sm">
-                    <span className={`rounded px-2 py-0.5 text-xs font-medium ${estadoColors[h.estado_desde_codigo]?.bg ?? "bg-slate-100 dark:bg-gray-700"} ${estadoColors[h.estado_desde_codigo]?.text ?? "text-slate-800 dark:text-gray-100"}`}>
-                      {estadoLabels[h.estado_desde_codigo] ?? h.estado_desde_codigo}
+                    <span className={`rounded px-2 py-0.5 text-xs font-medium ${estadoColors[h.estado_desde_codigo ?? ""]?.bg ?? "bg-slate-100 dark:bg-gray-700"} ${estadoColors[h.estado_desde_codigo ?? ""]?.text ?? "text-slate-800 dark:text-gray-100"}`}>
+                      {h.estado_desde_codigo ? (estadoLabels[h.estado_desde_codigo] ?? h.estado_desde_codigo) : "Creación"}
                     </span>
                     <span className="text-slate-400 dark:text-gray-300">&rarr;</span>
                     <span className={`rounded px-2 py-0.5 text-xs font-medium ${estadoColors[h.estado_hacia_codigo]?.bg ?? "bg-slate-100 dark:bg-gray-700"} ${estadoColors[h.estado_hacia_codigo]?.text ?? "text-slate-800 dark:text-gray-100"}`}>

@@ -113,7 +113,7 @@ class PedidoList(SQLModel):
 class HistorialEstadoPedidoPublic(SQLModel):
     id: int
     pedido_id: int
-    estado_desde_codigo: str
+    estado_desde_codigo: Optional[str] = None  # RN-02: NULL en la transición inicial
     estado_hacia_codigo: str
     usuario_id: Optional[int] = None
     motivo: Optional[str] = None

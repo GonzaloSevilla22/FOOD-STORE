@@ -153,3 +153,35 @@ Por pedido explícito, se mantuvieron como están (rompen features que hoy andan
   `CardPayment` embebido (funciona E2E con credenciales de prueba).
 - FSM mantiene los **7 estados** (con `A_ENTREGAR` / `ESPERANDO_CLIENTE` y auto-avance),
   no se redujo a los 5 del spec.
+
+---
+
+## G. RN-02 — fila inicial del historial con `estado_desde = NULL` (hallazgo del QA)
+
+### G.1 El problema
+
+Durante el QA del ciclo de vida se detectó que el historial de un pedido empezaba
+en `PENDIENTE → CONFIRMADO`, sin la fila inicial `NULL → PENDIENTE` que pide la
+**RN-02**. Causa raíz: el modelo `HistorialEstadoPedido.estado_desde_codigo` estaba
+`nullable=False`, así que `crear_pedido()` nunca insertaba esa fila.
+
+### G.2 La solución
+
+| Cambio | Archivo |
+| :---- | :---- |
+| `estado_desde_codigo` → `Optional[str]`, `nullable=True` (consigna §3.3: FK NULL) | `app/modules/pedidos/models.py` |
+| `crear_pedido()` inserta la fila inicial `NULL → PENDIENTE` ("Pedido creado") dentro del UoW | `app/modules/pedidos/service.py` |
+| `HistorialEstadoPedidoPublic.estado_desde_codigo` → `Optional[str]` | `app/modules/pedidos/schemas.py` |
+| Frontend: las 3 vistas de detalle muestran "Creación" cuando `estado_desde` es null; tipo TS `string \| null` | `ClientePedidoDetailPage.tsx`, `OperacionPedidoDetailPage.tsx`, `VentaDetailPage.tsx`, `services/api.ts` |
+| Test de regresión RN-02 (la creación inserta 1 fila con `estado_desde = NULL`) | `tests/integration/test_pedidos.py` |
+| Fix de build preexistente: `nuevaFila` de ProductoIngrediente sin `es_opcional` | `frontend/src/pages/EntityPages.tsx` |
+
+- En PostgreSQL en vivo se corrió `ALTER TABLE historiales_estado_pedido ALTER COLUMN estado_desde_codigo DROP NOT NULL` (no destructivo) para alinear el esquema existente.
+
+### G.3 Verificación
+
+```bash
+pytest -q                 # 101 passed (100 + regresión RN-02)
+cd frontend && npm run build   # tsc && vite build OK
+# En vivo: pedido nuevo -> historial = [ NULL -> PENDIENTE | "Pedido creado" ]
+```
