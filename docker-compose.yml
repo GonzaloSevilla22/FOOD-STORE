@@ -1,0 +1,25 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: food_store_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: food_store_db
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+      LANG: en_US.UTF-8
+      LC_MESSAGES: en_US.UTF-8
+      LC_ALL: en_US.UTF-8
+    ports:
+      - "5433:5432"
+    volumes:
+      - food_store_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d food_store_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+
+volumes:
+  food_store_pgdata:
