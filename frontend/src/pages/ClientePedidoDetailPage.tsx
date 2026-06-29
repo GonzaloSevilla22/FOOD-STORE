@@ -67,7 +67,7 @@ export function ClientePedidoDetailPage(): JSX.Element {
   // Clear cart when order is delivered
   useEffect(() => {
     if (pedidoQuery.data?.estado_codigo === "ENTREGADO") {
-      limpiarCarrito(false)
+      limpiarCarrito()
     }
   }, [pedidoQuery.data?.estado_codigo, limpiarCarrito])
 
@@ -77,7 +77,7 @@ export function ClientePedidoDetailPage(): JSX.Element {
       await recibirPedido(pedidoId);
       sessionStorage.removeItem("prev_cart");
       sessionStorage.removeItem("checkout_pedido_id");
-      limpiarCarrito(false);
+      limpiarCarrito();
       queryClient.invalidateQueries({ queryKey: ["cliente-pedido", pedidoId] });
       queryClient.invalidateQueries({ queryKey: ["cliente-historial", pedidoId] });
       toast.success("Pedido recibido con éxito");
@@ -97,7 +97,7 @@ export function ClientePedidoDetailPage(): JSX.Element {
       await cancelarPedido(pedidoId, motivo);
       sessionStorage.removeItem("prev_cart");
       sessionStorage.removeItem("checkout_pedido_id");
-      limpiarCarrito(false);
+      limpiarCarrito();
       queryClient.invalidateQueries({ queryKey: ["cliente-pedido", pedidoId] });
       queryClient.invalidateQueries({ queryKey: ["cliente-historial", pedidoId] });
       toast.success("Pedido devuelto correctamente");

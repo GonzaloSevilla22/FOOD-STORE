@@ -36,7 +36,7 @@ export default function OrderRedirectPage() {
             }
             sessionStorage.removeItem("prev_cart");
             sessionStorage.removeItem("checkout_pedido_id");
-            limpiarCarrito(false);
+            limpiarCarrito();
             setResult({ ok: true, msg: "Pago aprobado correctamente." });
           });
         } else if (res.estado === "rechazado") {

@@ -302,7 +302,7 @@ class TestStockDeductionFlow:
             },
         )
         assert r.status_code == 400, r.text
-        assert "Stock insuficiente de Pizza Insuficiente Test" in r.text
+        assert "Stock insuficiente de Pizza Insuficiente Test ¡fijate si te gusta otra cosa en el menú!" in r.text
 
         with Session(engine_test) as s:
             ing = s.get(Ingrediente, ing_id)

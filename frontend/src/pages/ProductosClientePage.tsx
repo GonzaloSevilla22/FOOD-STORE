@@ -9,7 +9,7 @@ import { useCartStore } from "../stores/cartStore";
 import { useProductosWS } from "../hooks/useProductosWS";
 import type { Categoria } from "../models/Categoria";
 import type { Producto } from "../models/Producto";
-import { categoriaService, cloudinaryThumb, getProductosPublic, reservarStock } from "../services/api";
+import { categoriaService, cloudinaryThumb, getProductosPublic } from "../services/api";
 import { SkeletonPage } from "../components/Skeleton";
 import { EmptyState } from "../components/EmptyState";
 import { Card } from "../components/ui/Card";
@@ -198,7 +198,6 @@ export function ProductosClientePage(): JSX.Element {
     }
     setAddingIds((prev) => new Set(prev).add(producto.id));
     try {
-      await reservarStock(producto.id, 1);
       agregarProducto({
         producto_id: producto.id,
         nombre: producto.nombre,

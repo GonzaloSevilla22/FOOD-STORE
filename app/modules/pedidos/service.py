@@ -91,11 +91,16 @@ class PedidoService:
         low_stock: list[dict] = []
         if not producto:
             return low_stock
-        if producto.stock_manual is not None:
+        if producto.usa_stock_manual:
             delta = multiplicador * cantidad
             if multiplicador == 1 and producto.stock_manual is not None and producto.stock_manual - delta < 0:
-                raise ValueError(f"Stock insuficiente para {producto.nombre}")
-            producto.stock_manual -= delta
+                raise ValueError(f"Stock insuficiente de {producto.nombre} ¡fijate si te gusta otra cosa en el menú!")
+            if producto.stock_manual is not None:
+                producto.stock_manual -= delta
+            if multiplicador == 1:
+                producto.disponible = producto.stock_manual is not None and producto.stock_manual > 0
+            elif multiplicador == -1:
+                producto.disponible = True
             session.add(producto)
         else:
             ingredientes = list(producto.productos_ingredientes)
@@ -106,7 +111,7 @@ class PedidoService:
                         delta = float(pi.cantidad) * cantidad * multiplicador
                         if multiplicador == 1 and ing.stock_actual - delta < 0:
                             raise ValueError(
-                                f"Stock insuficiente de '{ing.nombre}' para {producto.nombre}"
+                                f"Stock insuficiente de {producto.nombre} ¡fijate si te gusta otra cosa en el menú!"
                             )
                         ing.stock_actual -= delta
                         session.add(ing)
@@ -117,6 +122,17 @@ class PedidoService:
                                 "stock_actual": ing.stock_actual,
                                 "stock_minimo": ing.stock_minimo,
                             })
+                if multiplicador == 1:
+                    candidatos = [
+                        int(float(pi.ingrediente.stock_actual) // float(pi.cantidad))
+                        for pi in ingredientes
+                        if pi.ingrediente and pi.cantidad > 0
+                    ]
+                    producto.disponible = candidatos and min(candidatos) > 0
+                    session.add(producto)
+                elif multiplicador == -1:
+                    producto.disponible = True
+                    session.add(producto)
         return low_stock
 
     def _aplicar_stock(
@@ -238,7 +254,7 @@ class PedidoService:
                 if disponible_stock is not None and disponible_stock < detalle_data.cantidad:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Stock insuficiente de {producto.nombre}",
+                        detail=f"Stock insuficiente de {producto.nombre} ¡fijate si te gusta otra cosa en el menú!",
                     )
 
                 subtotal_detalle = producto.precio_base * Decimal(detalle_data.cantidad)
@@ -359,7 +375,7 @@ class PedidoService:
                 if disponible_stock is not None and disponible_stock < detalle_data.cantidad:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Stock insuficiente de {producto.nombre}",
+                        detail=f"Stock insuficiente de {producto.nombre} ¡fijate si te gusta otra cosa en el menú!",
                     )
 
                 subtotal_detalle = producto.precio_base * Decimal(detalle_data.cantidad)

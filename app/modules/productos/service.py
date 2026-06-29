@@ -287,6 +287,15 @@ class ProductoService:
             if producto is None or not self._is_active_product(producto):
                 raise HTTPException(status_code=404, detail="Producto no encontrado")
 
+            if disponible:
+                stock_disponible = self._compute_metrics(producto)[5]
+                tiene_stock = stock_disponible is not None and stock_disponible > 0
+                if not tiene_stock:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Stock es 0, no se puede clasificar como Disponible.",
+                    )
+
             producto.disponible = disponible
             producto.updated_at = datetime.now(timezone.utc)
             uow.productos.add(producto)
@@ -334,7 +343,7 @@ class ProductoService:
 
             if producto.usa_stock_manual:
                 if producto.stock_manual is None or producto.stock_manual < cantidad:
-                    raise HTTPException(status_code=400, detail=f"Stock insuficiente para {producto.nombre}")
+                    raise HTTPException(status_code=400, detail=f"Stock insuficiente de {producto.nombre} ¡fijate si te gusta otra cosa en el menú!")
                 producto.stock_manual -= cantidad
                 producto.disponible = producto.stock_manual > 0
             else:
@@ -353,7 +362,7 @@ class ProductoService:
                         if ing.stock_actual - delta < 0:
                             raise HTTPException(
                                 status_code=400,
-                                detail=f"Stock insuficiente de '{ing.nombre}' para {producto.nombre}",
+                                detail=f"Stock insuficiente de {producto.nombre} ¡fijate si te gusta otra cosa en el menú!",
                             )
                         ing.stock_actual -= delta
                         uow._session.add(ing)
@@ -467,6 +476,9 @@ class ProductoService:
 
             if producto.usa_stock_manual:
                 uow.productos.set_ingredientes(producto.id, [])
+
+            stock_disponible = self._compute_metrics(producto)[5]
+            producto.disponible = stock_disponible is not None and stock_disponible > 0
 
             producto.updated_at = datetime.now(timezone.utc)
             uow.productos.add(producto)

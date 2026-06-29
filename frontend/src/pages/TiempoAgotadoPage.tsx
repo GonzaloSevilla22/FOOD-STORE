@@ -12,7 +12,7 @@ export default function TiempoAgotadoPage() {
   useEffect(() => {
     sessionStorage.removeItem("prev_cart")
     sessionStorage.removeItem("checkout_pedido_id")
-    limpiarCarrito(false)
+    limpiarCarrito()
     const timer = setTimeout(() => navigate("/productos", { replace: true }), 3000)
     return () => clearTimeout(timer)
   }, [navigate, limpiarCarrito])

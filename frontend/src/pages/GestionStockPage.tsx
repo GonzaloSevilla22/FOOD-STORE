@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Helmet } from "react-helmet-async";
+import { toast } from "sonner";
 import { productoService, ingredienteService, updateProductoStock, updateProductoDisponibilidad } from "../services/api";
 import { useProductosWS } from "../hooks/useProductosWS";
 import type { Producto } from "../models/Producto";
@@ -75,6 +76,13 @@ function ProductosStockTab(): JSX.Element {
       updateProductoDisponibilidad(id, disponible),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["productos"] });
+    },
+    onError: (err: unknown) => {
+      const msg =
+        err instanceof Error
+          ? err.message
+          : "Stock es 0, no se puede clasificar como Disponible.";
+      toast.error(msg);
     },
   });
 
