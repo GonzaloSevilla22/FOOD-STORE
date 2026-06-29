@@ -478,11 +478,19 @@ _INGREDIENTES_CATALOGO: dict[str, tuple[str, bool, int, int, str, "UnidadEnum"]]
 
 
 def _get_or_create_ingrediente(session: Session, nombre: str) -> Ingrediente:
-    """Devuelve el ingrediente por nombre; lo crea con su precio/stock si no existe."""
+    """Devuelve el ingrediente por nombre. Lo crea si no existe; si ya existe,
+    sincroniza su stock/costo/alérgeno/unidad con el catálogo (el seed es la fuente
+    de verdad — corrige ingredientes viejos creados con stock bajo)."""
+    desc, alergeno, stock_a, stock_m, costo, unidad = _INGREDIENTES_CATALOGO[nombre]
     ing = session.exec(select(Ingrediente).where(Ingrediente.nombre == nombre)).first()
     if ing:
+        ing.stock_actual = stock_a
+        ing.stock_minimo = stock_m
+        ing.costo_unitario = Decimal(str(costo))
+        ing.es_alergeno = alergeno
+        ing.unidad_medida = unidad
+        session.add(ing)
         return ing
-    desc, alergeno, stock_a, stock_m, costo, unidad = _INGREDIENTES_CATALOGO[nombre]
     ing = Ingrediente(
         nombre=nombre,
         descripcion=desc,
@@ -505,7 +513,13 @@ def _link_ingrediente(
     simbolo: str,
     removible: bool,
 ) -> None:
-    """Vincula un ingrediente a un producto (idempotente por par producto/ingrediente)."""
+    """Vincula un ingrediente a un producto. Si el vínculo ya existe, sincroniza
+    cantidad/unidad/removible con el catálogo (corrige recetas viejas con valores raros)."""
+    unidad = session.exec(
+        select(UnidadMedida).where(UnidadMedida.simbolo == simbolo)
+    ).first()
+    if unidad is None:
+        return
     existing = session.exec(
         select(ProductoIngrediente).where(
             ProductoIngrediente.producto_id == producto.id,
@@ -513,11 +527,10 @@ def _link_ingrediente(
         )
     ).first()
     if existing:
-        return
-    unidad = session.exec(
-        select(UnidadMedida).where(UnidadMedida.simbolo == simbolo)
-    ).first()
-    if unidad is None:
+        existing.cantidad = Decimal(str(cantidad))
+        existing.unidad_medida_id = unidad.id
+        existing.es_removible = removible
+        session.add(existing)
         return
     session.add(
         ProductoIngrediente(
@@ -530,6 +543,19 @@ def _link_ingrediente(
     )
 
 
+def _stock_por_ingredientes(session: Session, producto_id: int) -> int | None:
+    """Unidades vendibles según el ingrediente más limitante (None si no hay receta)."""
+    rels = session.exec(
+        select(ProductoIngrediente).where(ProductoIngrediente.producto_id == producto_id)
+    ).all()
+    candidatos: list[int] = []
+    for rel in rels:
+        ing = session.get(Ingrediente, rel.ingrediente_id)
+        if ing and rel.cantidad and float(rel.cantidad) > 0:
+            candidatos.append(int(float(ing.stock_actual) // float(rel.cantidad)))
+    return min(candidatos) if candidatos else None
+
+
 def _ensure_producto_catalogo(
     session: Session,
     nombre: str,
@@ -540,13 +566,18 @@ def _ensure_producto_catalogo(
     categoria: Categoria,
     ingredientes: list[tuple[str, float, str, bool]],
     ing_cache: dict[str, Ingrediente],
+    es_manual: bool = False,
 ) -> None:
-    """Crea un producto de catálogo (stock manual), lo asocia a su categoría y lo
-    vincula con sus ingredientes. Idempotente por nombre.
+    """Crea/actualiza un producto de catálogo, lo asocia a su categoría y vincula sus
+    ingredientes. Idempotente por nombre.
 
-    No setea imagen propia: en el catálogo cada producto usa la imagen de su
-    categoría (las imágenes propias quedan reservadas para subidas reales por
-    Cloudinary desde el panel admin). `img_keywords` se conserva sin uso por ahora.
+    - `es_manual=False` (la mayoría): stock por ingredientes (usa_stock_manual=False);
+      la disponibilidad sale del stock de sus insumos.
+    - `es_manual=True` (Bebidas): stock manual (usa_stock_manual=True, stock_manual=stock);
+      no llevan receta. Disponible = stock_manual > 0.
+
+    No setea imagen propia: cada producto usa la imagen de su categoría. `img_keywords`
+    se conserva sin uso por ahora.
     """
     prod = session.exec(select(Producto).where(Producto.nombre == nombre)).first()
     if not prod:
@@ -554,9 +585,9 @@ def _ensure_producto_catalogo(
             nombre=nombre,
             descripcion=descripcion,
             precio_base=Decimal(str(precio)),
-            stock_manual=stock,
             disponible=True,
-            usa_stock_manual=True,
+            usa_stock_manual=es_manual,
+            stock_manual=stock if es_manual else None,
         )
         session.add(prod)
         session.flush()
@@ -565,11 +596,30 @@ def _ensure_producto_catalogo(
                 producto_id=prod.id, categoria_id=categoria.id, es_principal=True
             )
         )
+    elif es_manual:
+        # Bebidas: stock manual (sincronizado con el catálogo).
+        prod.usa_stock_manual = True
+        prod.stock_manual = stock
+        session.add(prod)
+    elif prod.usa_stock_manual:
+        # Resto: migrar de stock manual a stock por ingredientes.
+        prod.usa_stock_manual = False
+        prod.stock_manual = None
+        session.add(prod)
 
     for ing_nombre, cantidad, simbolo, removible in ingredientes:
         ingrediente = ing_cache.get(ing_nombre)
         if ingrediente is not None:
             _link_ingrediente(session, prod, ingrediente, cantidad, simbolo, removible)
+
+    # Disponibilidad: por stock manual (bebidas) o por stock de ingredientes (resto).
+    if es_manual:
+        prod.disponible = (prod.stock_manual or 0) > 0
+    else:
+        session.flush()
+        disponible_stock = _stock_por_ingredientes(session, prod.id)
+        prod.disponible = disponible_stock is None or disponible_stock > 0
+    session.add(prod)
 
 
 def _seed_extra_catalog(session: Session) -> None:
@@ -700,9 +750,10 @@ def _seed_extra_catalog(session: Session) -> None:
     }
     for nombre_cat, (descripcion, orden, productos) in catalogo.items():
         categoria = _get_or_create_categoria(session, nombre_cat, descripcion, orden)
+        es_manual = nombre_cat == "Bebidas"  # las bebidas usan stock manual
         for nombre, desc, precio, stock, img_keywords, ingredientes in productos:
             _ensure_producto_catalogo(
-                session, nombre, desc, precio, stock, img_keywords, categoria, ingredientes, ing_cache
+                session, nombre, desc, precio, stock, img_keywords, categoria, ingredientes, ing_cache, es_manual
             )
 
 
