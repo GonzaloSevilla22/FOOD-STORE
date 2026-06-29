@@ -15,7 +15,9 @@ export function NavBar(): JSX.Element {
   const cartCount = useCartStore((s) => s.itemCount());
   const location = useLocation();
   const isProductosPage = location.pathname === "/productos";
-  const showCarrito = !isAdmin && !isPedidos && !isStock && !isProductosPage;
+  // Solo clientes autenticados ven el acceso directo al carrito (un invitado no
+  // debe ver un link que rebota a una ruta protegida).
+  const showCarrito = isClient && !isProductosPage;
 
   return (
     <header className="border-b border-orange-100 bg-white/90 shadow-sm backdrop-blur transition-shadow duration-200 dark:border-gray-800 dark:bg-gray-800/90">

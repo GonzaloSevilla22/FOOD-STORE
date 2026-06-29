@@ -81,19 +81,24 @@ async def update_ingrediente(
     return await svc.update(ingrediente_id, data)
 
 
-@router.delete("/{ingrediente_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_ingrediente(
+@router.delete("/{ingrediente_id}")
+async def delete_ingrediente(
     ingrediente_id: int,
     _: CurrentUser = Depends(require_roles([ROLE_ADMIN])),
     svc: IngredienteService = Depends(get_ingrediente_service),
-) -> None:
-    svc.soft_delete(ingrediente_id)
+) -> dict:
+    """Da de baja el ingrediente y, en cascada, marca como no disponibles los
+    productos que lo usan. Devuelve cuántos productos quedaron afectados."""
+    productos_desactivados = await svc.soft_delete(ingrediente_id)
+    return {"productos_desactivados": productos_desactivados}
 
 
-@router.patch("/{ingrediente_id}/restore", response_model=IngredientePublic)
-def restore_ingrediente(
+@router.patch("/{ingrediente_id}/restore")
+async def restore_ingrediente(
     ingrediente_id: int,
     _: CurrentUser = Depends(require_roles([ROLE_ADMIN])),
     svc: IngredienteService = Depends(get_ingrediente_service),
-) -> IngredientePublic:
-    return svc.restore(ingrediente_id)
+) -> dict:
+    """Da de alta el ingrediente y reactiva en cascada los productos cuyos
+    ingredientes vuelvan a estar todos activos."""
+    return await svc.restore(ingrediente_id)

@@ -403,7 +403,7 @@ export function VentasPage(): JSX.Element {
                     cx="50%"
                     cy="50%"
                     outerRadius={80}
-                    label={({ name, payload }: any) =>
+                    label={({ name, payload }: { name?: string; payload?: { porcentaje: number } }) =>
                       payload ? `${name} ${payload.porcentaje.toFixed(1)}%` : name
                     }
                     labelLine
@@ -416,6 +416,33 @@ export function VentasPage(): JSX.Element {
                     contentStyle={{ background: tooltipBg, border: `1px solid ${tooltipBorder}`, color: isDark ? "#F3F4F6" : undefined, borderRadius: 8, fontSize: 12 }}
                   />
                 </PieChart>
+              </ResponsiveContainer>
+            </Card>
+
+            <Card padding="lg">
+              <h3 className="mb-3 font-display text-sm font-semibold text-slate-800 dark:text-gray-100">Ingresos por forma de pago</h3>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart
+                  layout="vertical"
+                  data={(() => {
+                    const map = new Map<string, number>();
+                    for (const p of pedidos.filter((x) => x.pago_estado === "aprobado")) {
+                      const forma = p.forma_pago_codigo || "—";
+                      map.set(forma, (map.get(forma) ?? 0) + asNumber(p.total));
+                    }
+                    return [...map.entries()].map(([forma, total]) => ({ forma, total }));
+                  })()}
+                  margin={{ left: 80 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+                  <XAxis type="number" tick={{ fontSize: 11, fill: isDark ? "#9CA3AF" : "#6B7280" }} />
+                  <YAxis type="category" dataKey="forma" tick={{ fontSize: 10, fill: isDark ? "#9CA3AF" : "#6B7280" }} width={75} />
+                  <Tooltip
+                    contentStyle={{ background: tooltipBg, border: `1px solid ${tooltipBorder}`, color: isDark ? "#F3F4F6" : undefined, borderRadius: 8, fontSize: 12 }}
+                    formatter={(value) => [`$${Number(value).toFixed(2)}`, "Ingresos"]}
+                  />
+                  <Bar dataKey="total" fill="#16A34A" radius={[0, 4, 4, 0]} name="Ingresos $" />
+                </BarChart>
               </ResponsiveContainer>
             </Card>
 

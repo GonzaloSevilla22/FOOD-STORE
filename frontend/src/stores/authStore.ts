@@ -36,11 +36,13 @@ export interface User {
 
 interface AuthStoreState {
   token: string | null;
+  refreshToken: string | null;
   user: User | null;
   roles: string[];
   tabId: string;
   authLoading: boolean;
   setAuthLoading: (loading: boolean) => void;
+  setTokens: (accessToken: string, refreshToken?: string | null) => void;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   verifySession: () => Promise<void>;
@@ -87,12 +89,16 @@ export const useAuthStore = create<AuthStoreState>()(
   persist(
     (set, get) => ({
       token: null,
+      refreshToken: null,
       user: null,
       roles: [],
       tabId: getOrCreateTabId(),
       authLoading: hasPersistedToken(),
 
       setAuthLoading: (loading) => set({ authLoading: loading }),
+
+      setTokens: (accessToken, refreshToken) =>
+        set((state) => ({ token: accessToken, refreshToken: refreshToken ?? state.refreshToken })),
 
       login: async (email, password) => {
         if (!email.trim() || !password.trim()) {
@@ -102,6 +108,7 @@ export const useAuthStore = create<AuthStoreState>()(
         const roles = (response.roles || []).map(normalizeRole);
         set({
           token: response.access_token,
+          refreshToken: response.refresh_token ?? null,
           user: response.usuario,
           roles,
         });
@@ -109,7 +116,7 @@ export const useAuthStore = create<AuthStoreState>()(
 
       logout: () => {
         useCartStore.getState().limpiarCarrito();
-        set({ token: null, user: null, roles: [] });
+        set({ token: null, refreshToken: null, user: null, roles: [] });
       },
 
       verifySession: async () => {
@@ -140,8 +147,8 @@ export const useAuthStore = create<AuthStoreState>()(
     {
       name: AUTH_STORAGE_KEY,
       storage: createJSONStorage(() => sessionStorage),
-      // Consigna §12: persiste accessToken + tabId (aislamiento multi-pestaña).
-      partialize: (state) => ({ token: state.token, tabId: state.tabId }),
+      // Consigna §12: persiste accessToken + refreshToken + tabId (aislamiento multi-pestaña).
+      partialize: (state) => ({ token: state.token, refreshToken: state.refreshToken, tabId: state.tabId }),
     }
   )
 );

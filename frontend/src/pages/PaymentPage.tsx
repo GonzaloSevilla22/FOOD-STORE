@@ -148,8 +148,9 @@ export default function PaymentPage() {
         pedidoQuery.data.direccion_entrega_id = updated.direccion_entrega_id
       }
       setSelectedDirId(updated.direccion_entrega_id)
-    } catch (err: any) {
-      const msg = err.response?.data?.detail || err.message || 'Error al actualizar dirección'
+    } catch (err) {
+      const e = err as { response?: { data?: { detail?: string } }; message?: string }
+      const msg = e.response?.data?.detail || e.message || 'Error al actualizar dirección'
       setError(msg)
     } finally {
       setUpdatingDir(false)
@@ -162,8 +163,9 @@ export default function PaymentPage() {
       await api.patch(`/pedidos/${orderId}/confirmar`, { forma_pago_codigo: "EFECTIVO" })
       resetPayment()
       window.location.href = `/api/v1/pagos/orders/${orderId}/success`
-    } catch (err: any) {
-      const msg = err.response?.data?.detail || err.message || "Error al confirmar pedido"
+    } catch (err) {
+      const e = err as { response?: { data?: { detail?: string } }; message?: string }
+      const msg = e.response?.data?.detail || e.message || "Error al confirmar pedido"
       failPayment(msg)
       setError(msg)
     }

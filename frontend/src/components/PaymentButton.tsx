@@ -29,8 +29,8 @@ export function PaymentButton({ pedidoId, monto }: PaymentButtonProps) {
       } else {
         fail('No se pudo obtener el link de pago')
       }
-    } catch (err: any) {
-      const detail = err.response?.data?.detail || 'Error al iniciar el pago'
+    } catch (err) {
+      const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail || 'Error al iniciar el pago'
       fail(detail)
     }
   }

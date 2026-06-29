@@ -1,13 +1,18 @@
 import { useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
 import { toast } from "sonner";
 import { PageTransition } from "../components/PageTransition";
+import { useAuth } from "../context/AuthContext";
 import { registerUser } from "../services/api";
 
 export function RegisterPage(): JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const { login } = useAuth();
+  // Tras registrarse, el usuario vuelve a Productos (o al destino que traiga ?redirect=).
+  const redirectTo = searchParams.get("redirect") || "/productos";
   const [nombre, setNombre] = useState("");
   const [apellido, setApellido] = useState("");
   const [email, setEmail] = useState("");
@@ -46,7 +51,14 @@ export function RegisterPage(): JSX.Element {
         password,
       });
       toast.success("Cuenta creada correctamente");
-      navigate("/login?registered=true");
+      // Auto-login para llevar al cliente directo al catálogo, sin un paso manual extra.
+      try {
+        await login(email.trim(), password);
+        navigate(redirectTo, { replace: true });
+      } catch {
+        // Si el auto-login fallara, lo derivamos al login conservando el destino.
+        navigate(`/login?registered=true&redirect=${encodeURIComponent(redirectTo)}`);
+      }
     } catch (err: unknown) {
       const msg =
         err instanceof Error ? err.message : "No se pudo crear la cuenta";
@@ -198,7 +210,7 @@ export function RegisterPage(): JSX.Element {
             ¿Ya tenés cuenta?{" "}
             <button
               type="button"
-              onClick={() => navigate("/login")}
+              onClick={() => navigate(`/login?redirect=${encodeURIComponent(redirectTo)}`)}
               className="font-medium text-brand-500 underline underline-offset-2 transition-colors hover:text-brand-600 dark:text-brand-400 dark:hover:text-brand-300"
             >
               Iniciar Sesión

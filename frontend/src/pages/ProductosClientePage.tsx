@@ -1,7 +1,9 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Helmet } from "react-helmet-async";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
 import { useCartStore } from "../stores/cartStore";
 import { useProductosWS } from "../hooks/useProductosWS";
@@ -44,7 +46,8 @@ function getImageUrl(producto: Producto): string {
   if (producto.imagenes_url && producto.imagenes_url.length > 0 && producto.imagenes_url[0]) {
     return cloudinaryThumb(producto.imagenes_url[0], 600, 400);
   }
-  return "https://images.unsplash.com/photo-1543332164-6e82f355badc?auto=format&fit=crop&w=800&q=80";
+  // Sin imagen propia: usamos una imagen acorde a su categoría (no una pizza genérica).
+  return getCategoryImage(producto.categoria_nombre ?? "");
 }
 
 function getCategoryEmoji(nombre: string): string {
@@ -52,6 +55,12 @@ function getCategoryEmoji(nombre: string): string {
   if (n.includes("pizza")) return "🍕";
   if (n.includes("bebida")) return "🥤";
   if (n.includes("adicional")) return "🧀";
+  if (n.includes("empanada")) return "🥟";
+  if (n.includes("hamburgues")) return "🍔";
+  if (n.includes("pasta")) return "🍝";
+  if (n.includes("milanesa")) return "🍖";
+  if (n.includes("ensalada")) return "🥗";
+  if (n.includes("postre")) return "🍰";
   if (n.includes("especial")) return "✨";
   if (n.includes("tradicional")) return "📜";
   if (n.includes("lomo")) return "🥩";
@@ -63,9 +72,15 @@ function getCategoryImage(nombre: string): string {
   if (n.includes("pizza")) return "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?auto=format&fit=crop&w=800&q=80";
   if (n.includes("bebida")) return "https://images.unsplash.com/photo-1554866585-cd94860890b7?auto=format&fit=crop&w=800&q=80";
   if (n.includes("adicional")) return "https://images.unsplash.com/photo-1604908176997-125f25cc6f3d?auto=format&fit=crop&w=800&q=80";
+  if (n.includes("empanada")) return "https://loremflickr.com/800/450/empanadas?lock=11";
+  if (n.includes("hamburgues")) return "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=800&q=80";
+  if (n.includes("pasta")) return "https://images.unsplash.com/photo-1551183053-bf91a1d81141?auto=format&fit=crop&w=800&q=80";
+  if (n.includes("milanesa")) return "https://images.unsplash.com/photo-1599921841143-819065a55cc6?auto=format&fit=crop&w=800&q=80";
+  if (n.includes("ensalada")) return "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?auto=format&fit=crop&w=800&q=80";
+  if (n.includes("postre")) return "https://images.unsplash.com/photo-1551024601-bec78aea704b?auto=format&fit=crop&w=800&q=80";
+  if (n.includes("lomo")) return "/categorias/lomo.jpg";
   if (n.includes("especial")) return "https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=800&q=80";
   if (n.includes("tradicional")) return "https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&w=800&q=80";
-  if (n.includes("lomo")) return "https://images.unsplash.com/photo-1603360946369-dc9bb6258143?auto=format&fit=crop&w=800&q=80";
   return "https://images.unsplash.com/photo-1543332164-6e82f355badc?auto=format&fit=crop&w=800&q=80";
 }
 
@@ -77,6 +92,8 @@ type CategoryGroup = {
 
 export function ProductosClientePage(): JSX.Element {
   const { agregarProducto } = useCart();
+  const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
   const itemCount = useCartStore((s) => s.itemCount());
   const filtrosIniciales = loadFiltros();
   const [search, setSearch] = useState(filtrosIniciales.search ?? "");
@@ -156,6 +173,23 @@ export function ProductosClientePage(): JSX.Element {
   }, []);
 
   const handleAddToCart = async (producto: Producto) => {
+    // Invitados: pueden ver el catálogo pero no agregar al carrito.
+    // Se les ofrece iniciar sesión o registrarse, conservando el destino (/productos).
+    if (!isAuthenticated) {
+      toast.warning("Necesitás una cuenta para agregar al carrito", {
+        description: "Iniciá sesión o registrate para continuar con tu pedido.",
+        duration: 6000,
+        action: {
+          label: "Iniciar sesión",
+          onClick: () => navigate("/login?redirect=/productos"),
+        },
+        cancel: {
+          label: "Crear cuenta",
+          onClick: () => navigate("/register?redirect=/productos"),
+        },
+      });
+      return;
+    }
     if (addingIds.has(producto.id)) return;
     const stockOk = producto.stock_disponible === null || producto.stock_disponible > 0;
     if (!producto.disponible || !stockOk) {
@@ -275,6 +309,10 @@ export function ProductosClientePage(): JSX.Element {
                     alt={grupo.nombre}
                     className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                     loading="lazy"
+                    onError={(e) => {
+                      const fb = "https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=800&q=80";
+                      if (e.currentTarget.src !== fb) e.currentTarget.src = fb;
+                    }}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
                   <div className="absolute bottom-3 left-3 right-3 flex items-center gap-2">
@@ -335,6 +373,10 @@ export function ProductosClientePage(): JSX.Element {
                                   alt={producto.nombre}
                                   className={`w-full object-cover outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10 ${isFeatured ? "h-72 sm:h-full" : "h-44"}`}
                                   loading="lazy"
+                                  onError={(e) => {
+                                    const fallback = getCategoryImage(producto.categoria_nombre ?? "");
+                                    if (e.currentTarget.src !== fallback) e.currentTarget.src = fallback;
+                                  }}
                                 />
                                 {deshabilitado ? (
                                   <div className="absolute inset-0 flex items-center justify-center bg-black/40">

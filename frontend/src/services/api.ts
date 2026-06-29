@@ -30,10 +30,47 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Refresh de access token en vuelo único: varios 401 concurrentes comparten un
+// solo refresh, evitando una tormenta de llamadas a /auth/refresh.
+let refreshPromise: Promise<string | null> | null = null;
+
+async function refreshAccessToken(): Promise<string | null> {
+  const rt = useAuthStore.getState().refreshToken;
+  if (!rt) return null;
+  try {
+    const res = await refreshTokenRequest(rt);
+    useAuthStore.getState().setTokens(res.access_token, res.refresh_token);
+    return res.access_token;
+  } catch {
+    return null;
+  }
+}
+
 api.interceptors.response.use(
   (response) => response,
-  (error: AxiosError) => {
-    if (error.response?.status === 401 && useAuthStore.getState().token) {
+  async (error: AxiosError) => {
+    const original = error.config as (AxiosRequestConfig & { _retry?: boolean }) | undefined;
+    const status = error.response?.status;
+    const isAuthCall = Boolean(
+      original?.url && (original.url.includes("/auth/login") || original.url.includes("/auth/refresh"))
+    );
+
+    if (status === 401 && original && !original._retry && !isAuthCall && useAuthStore.getState().refreshToken) {
+      // 401 con sesión activa: intentar refrescar el token UNA vez y reintentar el request original.
+      original._retry = true;
+      if (!refreshPromise) {
+        refreshPromise = refreshAccessToken().finally(() => {
+          refreshPromise = null;
+        });
+      }
+      const newToken = await refreshPromise;
+      if (newToken) {
+        // El request interceptor reinyecta el Authorization con el token nuevo del store.
+        return api.request(original);
+      }
+      useAuthStore.getState().logout();
+      if (_logoutHandler) _logoutHandler();
+    } else if (status === 401 && useAuthStore.getState().token && !original?._retry) {
       useAuthStore.getState().logout();
       if (_logoutHandler) {
         _logoutHandler();
@@ -123,7 +160,7 @@ export interface CrudService<T, TCreate, TUpdate> {
   getById: (id: number) => Promise<T>;
   create: (payload: TCreate) => Promise<T>;
   update: (id: number, payload: TUpdate) => Promise<T>;
-  delete: (id: number) => Promise<void>;
+  delete: (id: number) => Promise<unknown>;
   restore: (id: number) => Promise<T>;
 }
 
@@ -276,7 +313,7 @@ function buildCrudService<T, TCreate, TUpdate>(resourcePath: string): CrudServic
         data: payload,
       }),
     delete: (id: number) =>
-      request<void>(`${resourcePath}/${id}`, {
+      request<unknown>(`${resourcePath}/${id}`, {
         method: "DELETE",
       }),
     restore: (id: number) =>

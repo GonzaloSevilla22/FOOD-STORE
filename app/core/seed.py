@@ -47,6 +47,7 @@ def initialize_roles_and_states() -> None:
         _ensure_default_role_for_all(session)
         _cleanup_legacy_client_role(session)
         _seed_example_data(session)
+        _seed_extra_catalog(session)
         _seed_ventas_data(session)
         session.commit()
     except Exception as e:
@@ -426,6 +427,283 @@ def _seed_example_data(session: Session) -> None:
             es_removible=True,
         )
     )
+
+
+def _get_or_create_categoria(
+    session: Session, nombre: str, descripcion: str, orden: int
+) -> Categoria:
+    """Devuelve la categoría por nombre; la crea si no existe (idempotente)."""
+    cat = session.exec(select(Categoria).where(Categoria.nombre == nombre)).first()
+    if not cat:
+        cat = Categoria(nombre=nombre, descripcion=descripcion, orden_display=orden)
+        session.add(cat)
+        session.flush()
+    return cat
+
+
+# Catálogo de ingredientes (precio = costo_unitario, stock = stock_actual/minimo).
+# nombre -> (descripcion, es_alergeno, stock_actual, stock_minimo, costo_unitario, unidad)
+_INGREDIENTES_CATALOGO: dict[str, tuple[str, bool, int, int, str, "UnidadEnum"]] = {
+    "Mozzarella": ("Queso mozzarella", True, 8000, 1000, "0.20", UnidadEnum.GRAMOS),
+    "Salsa de tomate": ("Salsa de tomate natural", False, 6000, 800, "0.05", UnidadEnum.GRAMOS),
+    "Masa de pizza": ("Masa de pizza artesanal", True, 80, 15, "350", UnidadEnum.UNIDADES),
+    "Cebolla": ("Cebolla fresca", False, 200, 30, "200", UnidadEnum.UNIDADES),
+    "Tomate": ("Tomate fresco", False, 200, 30, "250", UnidadEnum.UNIDADES),
+    "Aceitunas": ("Aceitunas verdes", False, 3000, 400, "0.30", UnidadEnum.GRAMOS),
+    "Jamón": ("Jamón cocido", False, 4000, 500, "0.40", UnidadEnum.GRAMOS),
+    "Longaniza": ("Longaniza calabresa", False, 3000, 400, "0.60", UnidadEnum.GRAMOS),
+    "Carne picada": ("Carne picada especial", False, 7000, 1000, "0.55", UnidadEnum.GRAMOS),
+    "Bife de lomo": ("Bife de lomo", False, 6000, 800, "0.90", UnidadEnum.GRAMOS),
+    "Milanesa de carne": ("Milanesa de carne empanada", True, 60, 12, "650", UnidadEnum.UNIDADES),
+    "Suprema de pollo": ("Suprema de pollo empanada", True, 60, 12, "600", UnidadEnum.UNIDADES),
+    "Pollo": ("Pechuga de pollo", False, 6000, 800, "0.45", UnidadEnum.GRAMOS),
+    "Huevo": ("Huevo fresco", True, 200, 24, "120", UnidadEnum.UNIDADES),
+    "Lechuga": ("Lechuga fresca", False, 150, 20, "300", UnidadEnum.UNIDADES),
+    "Pan de hamburguesa": ("Pan de hamburguesa con sésamo", True, 300, 40, "180", UnidadEnum.UNIDADES),
+    "Pan de lomo": ("Pan para lomo", True, 200, 30, "220", UnidadEnum.UNIDADES),
+    "Cheddar": ("Queso cheddar", True, 5000, 600, "0.30", UnidadEnum.GRAMOS),
+    "Papa": ("Papa para freír", False, 15000, 2000, "0.02", UnidadEnum.GRAMOS),
+    "Provolone": ("Queso provolone", True, 3000, 400, "0.45", UnidadEnum.GRAMOS),
+    "Fideos": ("Fideos secos", True, 8000, 1000, "0.04", UnidadEnum.GRAMOS),
+    "Ñoquis": ("Ñoquis de papa", True, 6000, 800, "0.06", UnidadEnum.GRAMOS),
+    "Ricota": ("Ricota fresca", True, 3000, 400, "0.22", UnidadEnum.GRAMOS),
+    "Pan rallado": ("Pan rallado", True, 5000, 600, "0.03", UnidadEnum.GRAMOS),
+    "Croutons": ("Croutons de pan", True, 2000, 300, "0.10", UnidadEnum.GRAMOS),
+    "Dulce de leche": ("Dulce de leche repostero", True, 4000, 500, "0.25", UnidadEnum.GRAMOS),
+    "Chocolate": ("Chocolate semiamargo", True, 3000, 400, "0.50", UnidadEnum.GRAMOS),
+    "Helado de crema": ("Helado de crema", True, 5000, 800, "0.30", UnidadEnum.GRAMOS),
+    "Harina": ("Harina 000", True, 12000, 1500, "0.03", UnidadEnum.GRAMOS),
+    "Garbanzo": ("Harina de garbanzo", False, 4000, 500, "0.06", UnidadEnum.GRAMOS),
+}
+
+
+def _get_or_create_ingrediente(session: Session, nombre: str) -> Ingrediente:
+    """Devuelve el ingrediente por nombre; lo crea con su precio/stock si no existe."""
+    ing = session.exec(select(Ingrediente).where(Ingrediente.nombre == nombre)).first()
+    if ing:
+        return ing
+    desc, alergeno, stock_a, stock_m, costo, unidad = _INGREDIENTES_CATALOGO[nombre]
+    ing = Ingrediente(
+        nombre=nombre,
+        descripcion=desc,
+        es_alergeno=alergeno,
+        stock_actual=stock_a,
+        stock_minimo=stock_m,
+        costo_unitario=Decimal(str(costo)),
+        unidad_medida=unidad,
+    )
+    session.add(ing)
+    session.flush()
+    return ing
+
+
+def _link_ingrediente(
+    session: Session,
+    producto: Producto,
+    ingrediente: Ingrediente,
+    cantidad: float,
+    simbolo: str,
+    removible: bool,
+) -> None:
+    """Vincula un ingrediente a un producto (idempotente por par producto/ingrediente)."""
+    existing = session.exec(
+        select(ProductoIngrediente).where(
+            ProductoIngrediente.producto_id == producto.id,
+            ProductoIngrediente.ingrediente_id == ingrediente.id,
+        )
+    ).first()
+    if existing:
+        return
+    unidad = session.exec(
+        select(UnidadMedida).where(UnidadMedida.simbolo == simbolo)
+    ).first()
+    if unidad is None:
+        return
+    session.add(
+        ProductoIngrediente(
+            producto_id=producto.id,
+            ingrediente_id=ingrediente.id,
+            cantidad=Decimal(str(cantidad)),
+            unidad_medida_id=unidad.id,
+            es_removible=removible,
+        )
+    )
+
+
+def _ensure_producto_catalogo(
+    session: Session,
+    nombre: str,
+    descripcion: str,
+    precio: int,
+    stock: int,
+    img_keywords: str,
+    categoria: Categoria,
+    ingredientes: list[tuple[str, float, str, bool]],
+    ing_cache: dict[str, Ingrediente],
+) -> None:
+    """Crea un producto de catálogo (stock manual), lo asocia a su categoría y lo
+    vincula con sus ingredientes. Idempotente por nombre.
+
+    No setea imagen propia: en el catálogo cada producto usa la imagen de su
+    categoría (las imágenes propias quedan reservadas para subidas reales por
+    Cloudinary desde el panel admin). `img_keywords` se conserva sin uso por ahora.
+    """
+    prod = session.exec(select(Producto).where(Producto.nombre == nombre)).first()
+    if not prod:
+        prod = Producto(
+            nombre=nombre,
+            descripcion=descripcion,
+            precio_base=Decimal(str(precio)),
+            stock_manual=stock,
+            disponible=True,
+            usa_stock_manual=True,
+        )
+        session.add(prod)
+        session.flush()
+        session.add(
+            ProductoCategoria(
+                producto_id=prod.id, categoria_id=categoria.id, es_principal=True
+            )
+        )
+
+    for ing_nombre, cantidad, simbolo, removible in ingredientes:
+        ingrediente = ing_cache.get(ing_nombre)
+        if ingrediente is not None:
+            _link_ingrediente(session, prod, ingrediente, cantidad, simbolo, removible)
+
+
+def _seed_extra_catalog(session: Session) -> None:
+    """Catálogo ampliado con imágenes e ingredientes, idempotente por nombre.
+
+    Additivo: crea categorías nuevas, productos relacionados, ingredientes (con su
+    costo/stock) y los vínculos producto-ingrediente. Para los productos que ya
+    existen (los originales), solo completa la imagen faltante y agrega ingredientes.
+    No toca ni duplica lo ya cargado: seguro de correr en cada arranque.
+
+    Estructura del catálogo: categoría -> (descripcion, orden, [
+        (nombre, desc, precio, stock, img_keywords, [(ingrediente, cantidad, simbolo, removible)])
+    ]).
+    """
+    ing_cache = {n: _get_or_create_ingrediente(session, n) for n in _INGREDIENTES_CATALOGO}
+
+    catalogo: dict[str, tuple[str, int, list]] = {
+        "Pizzas": ("Pizzas clásicas y especiales", 1, [
+            ("Muzza", "Pizza de mozzarella", 1500, 50, "pizza,mozzarella", [
+                ("Masa de pizza", 1, "ud", False), ("Mozzarella", 200, "g", False), ("Salsa de tomate", 80, "g", True),
+            ]),
+            ("Napolitana", "Pizza napolitana con rodajas de tomate", 1800, 40, "pizza,tomato", [
+                ("Masa de pizza", 1, "ud", False), ("Mozzarella", 180, "g", False), ("Tomate", 2, "ud", True), ("Salsa de tomate", 80, "g", True),
+            ]),
+            ("Fugazzeta", "Pizza de cebolla y muzzarella", 1900, 40, "pizza,onion", [
+                ("Masa de pizza", 1, "ud", False), ("Mozzarella", 200, "g", False), ("Cebolla", 2, "ud", True),
+            ]),
+            ("Pizza Especial", "Jamón, morrón y aceitunas", 2300, 35, "pizza,supreme", [
+                ("Masa de pizza", 1, "ud", False), ("Mozzarella", 180, "g", False), ("Jamón", 50, "g", True), ("Aceitunas", 30, "g", True),
+            ]),
+            ("Calabresa", "Longaniza calabresa y muzzarella", 2100, 35, "pizza,pepperoni", [
+                ("Masa de pizza", 1, "ud", False), ("Mozzarella", 180, "g", False), ("Longaniza", 80, "g", True),
+            ]),
+        ]),
+        "Bebidas": ("Gaseosas, aguas y más", 2, [
+            ("Coca Cola 1.5L", "Gaseosa Coca Cola 1.5 litros", 1200, 100, "cola,soda", []),
+            ("Agua mineral 500ml", "Agua mineral sin gas", 400, 100, "water,bottle", []),
+            ("Sprite 1.5L", "Gaseosa lima-limón 1.5 litros", 1200, 80, "lemon,soda", []),
+            ("Cerveza Quilmes 1L", "Cerveza rubia 1 litro", 1800, 60, "beer,bottle", []),
+            ("Agua con gas 500ml", "Agua mineral con gas", 450, 100, "sparkling,water", []),
+            ("Jugo de Naranja 500ml", "Jugo exprimido natural", 1000, 50, "orange,juice", []),
+        ]),
+        "Adicionales": ("Porciones, fainá, etc.", 3, [
+            ("Fainá", "Porción de fainá", 500, 60, "chickpea,bread", [
+                ("Garbanzo", 120, "g", False),
+            ]),
+            ("Papas Fritas", "Porción de papas fritas", 1600, 70, "french,fries", [
+                ("Papa", 300, "g", False),
+            ]),
+            ("Provoleta", "Provoleta a la parrilla con orégano", 2000, 30, "grilled,cheese", [
+                ("Provolone", 200, "g", False),
+            ]),
+        ]),
+        "Empanadas": ("Empanadas caseras al horno", 4, [
+            ("Empanada de Carne", "Carne cortada a cuchillo", 950, 120, "empanada,beef", [
+                ("Harina", 60, "g", False), ("Carne picada", 70, "g", False), ("Cebolla", 1, "ud", True),
+            ]),
+            ("Empanada de Jamón y Queso", "Jamón cocido y muzzarella", 950, 120, "empanada", [
+                ("Harina", 60, "g", False), ("Jamón", 30, "g", False), ("Mozzarella", 30, "g", False),
+            ]),
+            ("Empanada de Pollo", "Pollo desmenuzado y verdeo", 950, 100, "empanada,chicken", [
+                ("Harina", 60, "g", False), ("Pollo", 70, "g", False),
+            ]),
+            ("Empanada de Verdura", "Acelga con salsa blanca", 900, 80, "empanada,spinach", [
+                ("Harina", 60, "g", False), ("Mozzarella", 20, "g", True),
+            ]),
+        ]),
+        "Hamburguesas": ("Hamburguesas artesanales", 5, [
+            ("Hamburguesa Simple", "Medallón de carne, lechuga y tomate", 2800, 50, "burger", [
+                ("Pan de hamburguesa", 1, "ud", False), ("Carne picada", 150, "g", False), ("Lechuga", 1, "ud", True), ("Tomate", 1, "ud", True),
+            ]),
+            ("Hamburguesa Doble Cheddar", "Doble medallón con cheddar", 3900, 45, "cheeseburger", [
+                ("Pan de hamburguesa", 1, "ud", False), ("Carne picada", 300, "g", False), ("Cheddar", 40, "g", False),
+            ]),
+            ("Hamburguesa Completa", "Carne, huevo, jamón, lechuga y tomate", 4200, 40, "burger,bacon", [
+                ("Pan de hamburguesa", 1, "ud", False), ("Carne picada", 150, "g", False), ("Huevo", 1, "ud", True), ("Jamón", 30, "g", True), ("Lechuga", 1, "ud", True), ("Tomate", 1, "ud", True),
+            ]),
+        ]),
+        "Lomos": ("Lomos completos y simples", 6, [
+            ("Lomo Completo", "Lomo, jamón, queso, huevo, lechuga y tomate", 4500, 35, "steak,sandwich", [
+                ("Pan de lomo", 1, "ud", False), ("Bife de lomo", 150, "g", False), ("Jamón", 30, "g", True), ("Mozzarella", 40, "g", True), ("Huevo", 1, "ud", True), ("Lechuga", 1, "ud", True), ("Tomate", 1, "ud", True),
+            ]),
+            ("Lomo Simple", "Lomo con lechuga y tomate", 3800, 35, "sandwich,steak", [
+                ("Pan de lomo", 1, "ud", False), ("Bife de lomo", 150, "g", False), ("Lechuga", 1, "ud", True), ("Tomate", 1, "ud", True),
+            ]),
+        ]),
+        "Pastas": ("Pastas caseras con salsa", 7, [
+            ("Ñoquis con salsa", "Ñoquis de papa con salsa a elección", 2600, 40, "gnocchi", [
+                ("Ñoquis", 250, "g", False), ("Salsa de tomate", 120, "g", True),
+            ]),
+            ("Ravioles de Ricota", "Ravioles de ricota y verdura", 2900, 40, "ravioli", [
+                ("Harina", 100, "g", False), ("Ricota", 120, "g", False), ("Salsa de tomate", 120, "g", True),
+            ]),
+            ("Fideos con Tuco", "Fideos caseros con tuco", 2400, 40, "spaghetti,tomato", [
+                ("Fideos", 150, "g", False), ("Salsa de tomate", 150, "g", True),
+            ]),
+        ]),
+        "Milanesas": ("Milanesas de carne y pollo", 8, [
+            ("Milanesa Napolitana", "Milanesa con jamón, queso y salsa", 3600, 40, "schnitzel,cheese", [
+                ("Milanesa de carne", 1, "ud", False), ("Mozzarella", 60, "g", False), ("Jamón", 30, "g", True), ("Salsa de tomate", 60, "g", True),
+            ]),
+            ("Milanesa con Papas Fritas", "Milanesa con guarnición de papas", 3400, 40, "schnitzel,fries", [
+                ("Milanesa de carne", 1, "ud", False), ("Papa", 250, "g", False),
+            ]),
+            ("Suprema de Pollo", "Suprema de pollo crocante", 3500, 40, "chicken,cutlet", [
+                ("Suprema de pollo", 1, "ud", False), ("Pan rallado", 40, "g", False),
+            ]),
+        ]),
+        "Ensaladas": ("Ensaladas frescas", 9, [
+            ("Ensalada César", "Lechuga, pollo, croutons y aderezo César", 2100, 30, "caesar,salad", [
+                ("Lechuga", 1, "ud", False), ("Pollo", 80, "g", False), ("Croutons", 20, "g", True),
+            ]),
+            ("Ensalada Mixta", "Lechuga, tomate y cebolla", 1700, 30, "salad,vegetables", [
+                ("Lechuga", 1, "ud", False), ("Tomate", 1, "ud", False), ("Cebolla", 1, "ud", True),
+            ]),
+        ]),
+        "Postres": ("Postres caseros", 10, [
+            ("Flan con Dulce de Leche", "Flan casero con dulce de leche", 1400, 40, "flan,caramel", [
+                ("Huevo", 2, "ud", False), ("Dulce de leche", 60, "g", True),
+            ]),
+            ("Helado 1/4 kg", "Helado artesanal 1/4 kg", 2200, 30, "ice,cream", [
+                ("Helado de crema", 250, "g", False),
+            ]),
+            ("Brownie con Helado", "Brownie tibio con helado de crema", 1800, 35, "brownie,icecream", [
+                ("Chocolate", 80, "g", False), ("Harina", 60, "g", False), ("Helado de crema", 80, "g", True),
+            ]),
+        ]),
+    }
+    for nombre_cat, (descripcion, orden, productos) in catalogo.items():
+        categoria = _get_or_create_categoria(session, nombre_cat, descripcion, orden)
+        for nombre, desc, precio, stock, img_keywords, ingredientes in productos:
+            _ensure_producto_catalogo(
+                session, nombre, desc, precio, stock, img_keywords, categoria, ingredientes, ing_cache
+            )
 
 
 def _seed_ventas_data(session: Session) -> None:

@@ -18,6 +18,7 @@ import {
   ingredienteService,
   productoService,
   uploadImagen,
+  deleteImagen,
   type CrudService,
 } from "../services/api";
 
@@ -144,6 +145,14 @@ function ProductoFormExtra({
       ...previous,
       imagenes_url: ((previous.imagenes_url as string[] | undefined) ?? []).filter((u) => u !== url),
     }));
+    // Eliminar también de Cloudinary (DELETE /uploads) — best-effort, solo si es
+    // una secure_url de Cloudinary. Extrae el public_id (con carpeta) de la URL.
+    if (url.includes("res.cloudinary.com")) {
+      const match = url.match(/\/upload\/(?:v\d+\/)?(.+?)\.[a-zA-Z0-9]+$/);
+      if (match) {
+        void deleteImagen(match[1]).catch(() => undefined);
+      }
+    }
   };
 
   return (
@@ -293,6 +302,10 @@ function ProductoIngredientsEditor({
 }): JSX.Element {
   const usaStockManual = Boolean(form.usa_stock_manual);
   const [ingredienteSearch, setIngredienteSearch] = useState<Record<number, string>>({});
+  // Fila cuyo desplegable de búsqueda está abierto (combobox autocompletar).
+  const [openRow, setOpenRow] = useState<number | null>(null);
+  // Índice de la opción resaltada (navegación con flechas + Enter).
+  const [highlight, setHighlight] = useState(0);
   const ingredientesQuery = useQuery({
     queryKey: ["ingredientes", "options"],
     queryFn: () => ingredienteService.getAll(0, 100, false),
@@ -384,50 +397,93 @@ function ProductoIngredientsEditor({
       ) : ingredientesSeleccionados.length > 0 ? (
         <div className="space-y-3 rounded border border-orange-100 dark:border-gray-500 bg-white dark:bg-gray-800 p-2">
           {ingredientesSeleccionados.map((ingrediente, index) => {
+            const ingSeleccionado = ingredientesPorId.get(ingrediente.ingrediente_id);
+            const query = ingredienteSearch[index] ?? "";
+            const isOpen = openRow === index;
+            const opciones = ingredientesDisponibles.filter((opcion) => {
+              const usadoEnOtra = ingredientesSeleccionados.some(
+                (row, rowIndex) => rowIndex !== index && row.ingrediente_id === opcion.id
+              );
+              if (usadoEnOtra) return false;
+              const q = query.trim().toLowerCase();
+              return q === "" || opcion.nombre.toLowerCase().includes(q);
+            });
+            const seleccionar = (opcionId: number): void => {
+              const ing = ingredientesPorId.get(opcionId);
+              updateRow(index, {
+                ingrediente_id: opcionId,
+                unidad_medida_id: ing ? (enumAUnidadMedidaId[ing.unidad_medida] ?? 0) : 0,
+              });
+              setIngredienteSearch((prev) => ({ ...prev, [index]: "" }));
+              setOpenRow(null);
+            };
             return (
               <div key={`${ingrediente.ingrediente_id}-${index}`} className="grid gap-2 rounded bg-orange-50 dark:bg-gray-800/50 p-3 md:grid-cols-2 lg:grid-cols-[2fr,1fr,auto,auto]">
-                <div className="min-w-0">
+                <div className="relative min-w-0">
                   <input
                     type="text"
-                    placeholder="Buscar ingrediente..."
-                    className="mb-1 w-full rounded border border-orange-200 dark:border-gray-500 dark:bg-gray-800 dark:text-gray-100 px-3 py-1.5 text-xs focus:border-orange-400 focus:outline-none"
-                    value={ingredienteSearch[index] ?? ""}
-                    onChange={(e) => setIngredienteSearch((prev) => ({ ...prev, [index]: e.target.value }))}
-                  />
-                  <select
+                    placeholder="Escribí para buscar un ingrediente..."
                     className="w-full rounded border border-orange-200 dark:border-gray-500 dark:bg-gray-800 dark:text-gray-100 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none"
-                    value={ingrediente.ingrediente_id}
-                    onChange={(event) => {
-                      const nextId = Number(event.target.value);
-                      if (
-                        ingredientesSeleccionados.some(
-                          (row, rowIndex) => rowIndex !== index && row.ingrediente_id === nextId
-                        )
-                      ) {
-                        toast.error("Este ingrediente ya está agregado en otra fila.");
-                        return;
-                      }
-
-                      const ingSel = ingredientesPorId.get(nextId);
-                      updateRow(index, {
-                        ingrediente_id: nextId,
-                        unidad_medida_id: ingSel ? (enumAUnidadMedidaId[ingSel.unidad_medida] ?? 0) : 0,
-                      });
+                    value={isOpen ? query : (ingSeleccionado ? ingSeleccionado.nombre : query)}
+                    onFocus={() => {
+                      setOpenRow(index);
                       setIngredienteSearch((prev) => ({ ...prev, [index]: "" }));
+                      setHighlight(0);
                     }}
-                  >
-                    {ingredientesDisponibles
-                      .filter((opcion) =>
-                        opcion.id === ingrediente.ingrediente_id ||
-                        (ingredienteSearch[index] ?? "").trim() === "" ||
-                        opcion.nombre.toLowerCase().includes((ingredienteSearch[index] ?? "").toLowerCase())
-                      )
-                      .map((opcion) => (
-                        <option key={opcion.id} value={opcion.id}>
-                          {opcion.nombre} ({opcion.unidad_medida})
-                        </option>
-                      ))}
-                  </select>
+                    onChange={(e) => {
+                      setOpenRow(index);
+                      setIngredienteSearch((prev) => ({ ...prev, [index]: e.target.value }));
+                      setHighlight(0);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "ArrowDown") {
+                        e.preventDefault();
+                        setOpenRow(index);
+                        setHighlight((h) => Math.min(h + 1, opciones.length - 1));
+                      } else if (e.key === "ArrowUp") {
+                        e.preventDefault();
+                        setHighlight((h) => Math.max(h - 1, 0));
+                      } else if (e.key === "Enter") {
+                        e.preventDefault(); // no submitea el form
+                        const opt = opciones[highlight];
+                        if (opt) seleccionar(opt.id);
+                      } else if (e.key === "Escape") {
+                        setOpenRow(null);
+                      }
+                    }}
+                    onBlur={() => {
+                      // Delay para permitir el click en una opción antes de cerrar.
+                      setTimeout(() => setOpenRow((cur) => (cur === index ? null : cur)), 120);
+                    }}
+                  />
+                  {isOpen ? (
+                    <ul className="absolute left-0 right-0 z-20 mt-1 max-h-48 overflow-auto rounded border border-orange-200 dark:border-gray-600 bg-white dark:bg-gray-800 shadow-lg">
+                      {opciones.length === 0 ? (
+                        <li className="px-3 py-2 text-xs text-orange-700 dark:text-orange-300">Sin coincidencias</li>
+                      ) : (
+                        opciones.map((opcion, optIndex) => (
+                          <li key={opcion.id}>
+                            <button
+                              type="button"
+                              ref={optIndex === highlight ? (el) => el?.scrollIntoView({ block: "nearest" }) : undefined}
+                              onMouseDown={(e) => e.preventDefault()}
+                              onMouseEnter={() => setHighlight(optIndex)}
+                              onClick={() => seleccionar(opcion.id)}
+                              className={`block w-full px-3 py-2 text-left text-sm ${
+                                optIndex === highlight ? "bg-orange-100 dark:bg-gray-700" : ""
+                              } ${
+                                opcion.id === ingrediente.ingrediente_id
+                                  ? "font-medium text-orange-700 dark:text-orange-300"
+                                  : "text-slate-800 dark:text-gray-100"
+                              }`}
+                            >
+                              {opcion.nombre} <span className="text-xs text-orange-400">({opcion.unidad_medida})</span>
+                            </button>
+                          </li>
+                        ))
+                      )}
+                    </ul>
+                  ) : null}
                 </div>
 
                 <div className="flex flex-col gap-1">
@@ -501,6 +557,7 @@ function IngredienteFormExtra({
               stock_actual: event.target.value === "" ? 0 : Number(event.target.value),
             }))
           }
+          onFocus={(event) => event.target.select()}
         />
       </label>
 
@@ -518,6 +575,7 @@ function IngredienteFormExtra({
               stock_minimo: event.target.value === "" ? 0 : Number(event.target.value),
             }))
           }
+          onFocus={(event) => event.target.select()}
         />
       </label>
 
@@ -535,6 +593,7 @@ function IngredienteFormExtra({
               costo_unitario: event.target.value === "" ? 0 : Number(event.target.value),
             }))
           }
+          onFocus={(event) => event.target.select()}
         />
       </label>
 
@@ -625,9 +684,21 @@ function EntityPage<T extends BaseEntity, TCreate, TUpdate>({
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => config.service.delete(id),
-    onSuccess: async () => {
+    onSuccess: async (data) => {
       await queryClient.invalidateQueries({ queryKey: [config.key] });
-      setFeedback({ type: "success", message: "Baja lógica aplicada correctamente." });
+      // Baja de ingrediente en cascada: el backend informa cuántos productos quedaron no disponibles.
+      const afectados =
+        data && typeof data === "object" && "productos_desactivados" in data
+          ? Number((data as { productos_desactivados: number }).productos_desactivados)
+          : 0;
+      if (afectados > 0) {
+        await queryClient.invalidateQueries({ queryKey: ["productos"] });
+      }
+      const message =
+        afectados > 0
+          ? `Baja aplicada. ${afectados} producto(s) quedaron marcados como no disponibles.`
+          : "Baja lógica aplicada correctamente.";
+      setFeedback({ type: "success", message });
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message : "No se pudo aplicar la baja lógica.";
@@ -637,9 +708,21 @@ function EntityPage<T extends BaseEntity, TCreate, TUpdate>({
 
   const restoreMutation = useMutation({
     mutationFn: (id: number) => config.service.restore(id),
-    onSuccess: async () => {
+    onSuccess: async (data) => {
       await queryClient.invalidateQueries({ queryKey: [config.key] });
-      setFeedback({ type: "success", message: "Registro dado de alta nuevamente." });
+      // Alta de ingrediente en cascada: el backend informa cuántos productos volvieron a estar disponibles.
+      const reactivados =
+        data && typeof data === "object" && "productos_reactivados" in data
+          ? Number((data as { productos_reactivados: number }).productos_reactivados)
+          : 0;
+      if (reactivados > 0) {
+        await queryClient.invalidateQueries({ queryKey: ["productos"] });
+      }
+      const message =
+        reactivados > 0
+          ? `Alta aplicada. ${reactivados} producto(s) volvieron a estar disponibles.`
+          : "Registro dado de alta nuevamente.";
+      setFeedback({ type: "success", message });
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message : "No se pudo restaurar el registro.";
@@ -1144,12 +1227,20 @@ function EntityPage<T extends BaseEntity, TCreate, TUpdate>({
         confirmLabel={confirmAction.action === "delete" ? "Dar de baja" : "Dar de alta"}
         variant={confirmAction.action === "delete" ? "danger" : "default"}
         onConfirm={async () => {
-          if (confirmAction.action === "delete") {
-            await deleteMutation.mutateAsync(confirmAction.id);
-          } else {
-            await restoreMutation.mutateAsync(confirmAction.id);
+          try {
+            if (confirmAction.action === "delete") {
+              await deleteMutation.mutateAsync(confirmAction.id);
+            } else {
+              await restoreMutation.mutateAsync(confirmAction.id);
+            }
+          } catch {
+            // El motivo del fallo (p. ej. ingrediente asociado a productos activos)
+            // ya se muestra en el banner via onError de la mutación.
+          } finally {
+            // Cerramos el cartel siempre: en éxito y también en error (evita el
+            // "Uncaught (in promise)" y deja ver el mensaje de feedback).
+            setConfirmAction({ isOpen: false, id: 0, action: "delete" });
           }
-          setConfirmAction({ isOpen: false, id: 0, action: "delete" });
         }}
         onCancel={() => setConfirmAction({ isOpen: false, id: 0, action: "delete" })}
       />

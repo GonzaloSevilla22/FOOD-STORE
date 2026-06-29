@@ -251,7 +251,7 @@ class PedidoService:
                 })
                 subtotal += subtotal_detalle
 
-            costo_envio = Decimal("0")
+            costo_envio = Decimal("50")  # consigna §3.3: costo de envío fijo
             total = subtotal - data.descuento + costo_envio
 
             estado_pendiente = uow.estados.get_by_codigo(STATE_PENDIENTE)

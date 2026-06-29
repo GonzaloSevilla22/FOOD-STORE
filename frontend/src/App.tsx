@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
 import { useAuth } from "./context/AuthContext";
 import { CartProvider } from "./context/CartContext";
@@ -63,7 +63,7 @@ function DashboardLayout({ children }: DashboardLayoutProps): JSX.Element {
 }
 
 export function App(): JSX.Element {
-  const { isAuthenticated, isAdmin, isStock, isPedidos, logout } = useAuth();
+  const { isAdmin, isStock, isPedidos, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -74,13 +74,37 @@ export function App(): JSX.Element {
     });
   }, [logout, navigate]);
 
+  // Selecciona el contenido de cualquier input numérico al enfocarlo, para que al
+  // empezar a escribir se reemplace el valor (evita el "0100"). Cubre toda la app.
+  useEffect(() => {
+    const onFocusIn = (event: FocusEvent): void => {
+      const target = event.target;
+      if (target instanceof HTMLInputElement && target.type === "number") {
+        target.select();
+      }
+    };
+    document.addEventListener("focusin", onFocusIn);
+    return () => document.removeEventListener("focusin", onFocusIn);
+  }, []);
+
+  // Vista de Productos según rol (cliente/invitado → catálogo público).
+  // Se reutiliza tal cual en la ruta principal "/" y en "/productos" para no
+  // duplicar la lógica de selección por rol.
+  const productosView = (
+    <DashboardLayout>
+      {isAdmin || isStock ? <ProductosPage /> : isPedidos ? <ProductosInternosPage /> : <ProductosClientePage />}
+    </DashboardLayout>
+  );
+
   return (
     <CartProvider>
       <ErrorBoundary>
       <AnimatePresence mode="wait">
         <Routes location={location} key={location.pathname}>
-        {/* Login */}
-        <Route path="/login" element={isAuthenticated ? <Navigate to="/home" replace /> : <LoginPage />} />
+        {/* Login — LoginPage es el único dueño del redirect post-login: si está
+            autenticado, su useEffect redirige a ?redirect= (o /home por defecto).
+            No usamos un <Navigate to="/home"> acá porque pisaba ese ?redirect=. */}
+        <Route path="/login" element={<LoginPage />} />
 
         {/* Access Denied */}
         <Route path="/access-denied" element={<AccessDeniedPage />} />
@@ -221,14 +245,7 @@ export function App(): JSX.Element {
         />
 
         {/* RUTAS COMUNES (públicas y autenticadas) */}
-        <Route
-          path="/productos"
-          element={
-            <DashboardLayout>
-              {isAdmin || isStock ? <ProductosPage /> : isPedidos ? <ProductosInternosPage /> : <ProductosClientePage />}
-            </DashboardLayout>
-          }
-        />
+        <Route path="/productos" element={productosView} />
 
         <Route
           path="/productos/:productoId"
@@ -328,7 +345,10 @@ export function App(): JSX.Element {
         />
 
         {/* Public routes */}
-        <Route path="/" element={<LandingPage />} />
+        {/* La home ("/") ahora es el catálogo de Productos (público). */}
+        <Route path="/" element={productosView} />
+        {/* La Landing queda accesible en /landing (ya no es la home). */}
+        <Route path="/landing" element={<LandingPage />} />
         <Route path="/register" element={<RegisterPage />} />
 
         {/* Fallback */}

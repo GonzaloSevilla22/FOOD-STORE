@@ -124,36 +124,85 @@ class IngredienteService:
             await self._broadcast_event("INGREDIENTE_UPDATED", {"ingrediente_id": ingrediente_id, "data": result.model_dump()})
         return result
 
-    def soft_delete(self, ingrediente_id: int) -> None:
-        """Soft delete usando el campo activo."""
+    async def soft_delete(self, ingrediente_id: int) -> int:
+        """Soft delete del ingrediente (campo activo + deleted_at).
+
+        Cascada (decisión de diseño): en vez de bloquear, marca como NO disponibles
+        (disponible=False) los productos activos que usan el ingrediente. No los
+        borra, así es reversible. Devuelve la cantidad de productos afectados.
+        """
+        afectados: list[int] = []
         with CatalogUnitOfWork(self._session) as uow:
             ingrediente = uow.ingredientes.get_by_id(ingrediente_id)
             if ingrediente is None or not self._is_active(ingrediente):
                 raise HTTPException(status_code=404, detail="Ingrediente no encontrado")
 
-            if uow.ingredientes.has_active_product_usage(ingrediente_id):
-                raise HTTPException(
-                    status_code=422,
-                    detail="No se puede desactivar el ingrediente porque está asociado a productos activos",
-                )
-
             now = datetime.now(timezone.utc)
+            for rel in ingrediente.productos_ingredientes:
+                producto = rel.producto
+                if producto is None:
+                    continue
+                if producto.deleted_at is None and producto.activo and producto.disponible:
+                    producto.disponible = False
+                    producto.updated_at = now
+                    self._session.add(producto)
+                    afectados.append(producto.id)
+
             ingrediente.activo = False
             ingrediente.deleted_at = now
             ingrediente.updated_at = now
             uow.ingredientes.add(ingrediente)
 
-    def restore(self, ingrediente_id: int) -> IngredientePublic:
-        """Restaurar un ingrediente dado de baja."""
+        # Post-commit: avisar a los catálogos que esos productos ya no están disponibles.
+        for producto_id in afectados:
+            await self._broadcast_event("PRODUCTO_UPDATED", {"producto_id": producto_id})
+
+        return len(afectados)
+
+    async def restore(self, ingrediente_id: int) -> dict:
+        """Restaurar un ingrediente dado de baja.
+
+        Cascada inversa: reactiva (disponible=True) los productos que estaban no
+        disponibles y cuyos ingredientes vuelven a estar TODOS activos. Devuelve el
+        ingrediente más `productos_reactivados` (cantidad).
+        """
+        reactivados: list[int] = []
         with CatalogUnitOfWork(self._session) as uow:
             ingrediente = uow.ingredientes.get_by_id(ingrediente_id)
             if ingrediente is None or self._is_active(ingrediente):
                 raise HTTPException(status_code=404, detail="Ingrediente no encontrado")
 
+            now = datetime.now(timezone.utc)
             ingrediente.activo = True
             ingrediente.deleted_at = None
-            ingrediente.updated_at = datetime.now(timezone.utc)
+            ingrediente.updated_at = now
             uow.ingredientes.add(ingrediente)
+
+            # Reactivar productos no disponibles cuyos ingredientes estén TODOS activos.
+            for rel in ingrediente.productos_ingredientes:
+                producto = rel.producto
+                if producto is None:
+                    continue
+                if producto.deleted_at is not None or not producto.activo or producto.disponible:
+                    continue
+                todos_activos = all(
+                    pi.ingrediente is not None
+                    and pi.ingrediente.activo
+                    and pi.ingrediente.deleted_at is None
+                    for pi in producto.productos_ingredientes
+                )
+                if todos_activos:
+                    producto.disponible = True
+                    producto.updated_at = now
+                    self._session.add(producto)
+                    reactivados.append(producto.id)
+
             result = IngredientePublic.model_validate(ingrediente)
 
-        return result
+        # Post-commit: avisar a los catálogos que esos productos volvieron a estar disponibles.
+        for producto_id in reactivados:
+            await self._broadcast_event("PRODUCTO_UPDATED", {"producto_id": producto_id})
+
+        payload = result.model_dump()
+        payload["productos_reactivados"] = len(reactivados)
+        return payload

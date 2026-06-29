@@ -72,7 +72,7 @@ class Pedido(BaseModel, table=True):
     subtotal: Decimal = Field(default=0, ge=0, max_digits=10, decimal_places=2, nullable=False)
     forma_pago_codigo: Optional[str] = Field(default=None, foreign_key="formas_pago.codigo", max_length=50, nullable=True)
     descuento: Decimal = Field(default=0, ge=0, max_digits=10, decimal_places=2, nullable=False)
-    costo_envio: Decimal = Field(default=0, ge=0, max_digits=10, decimal_places=2, nullable=False)
+    costo_envio: Decimal = Field(default=50, ge=0, max_digits=10, decimal_places=2, nullable=False)  # consigna §3.3: default 50.00
     total: Decimal = Field(default=0, ge=0, max_digits=10, decimal_places=2, nullable=False)
     notas: Optional[str] = Field(default=None, nullable=True)
 

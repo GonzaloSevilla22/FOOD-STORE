@@ -8,21 +8,24 @@ export function LoginPage(): JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const { login, isAuthenticated } = useAuth();
+  const { login, isAuthenticated, isAdmin, isStock, isPedidos } = useAuth();
 
   const [email, setEmail] = useState<string>("admin@test.com");
   const [password, setPassword] = useState<string>("admin123");
   const [error, setError] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
-  const redirectTo = searchParams.get("redirect") || "/home";
+  const explicitRedirect = searchParams.get("redirect");
   const justRegistered = searchParams.get("registered") === "true";
 
   useEffect(() => {
     if (isAuthenticated) {
-      navigate(redirectTo, { replace: true });
+      // El staff va a su panel (/home); el cliente va al catálogo (/productos).
+      // Un ?redirect= explícito (p. ej. desde el catálogo) tiene prioridad.
+      const target = explicitRedirect || (isAdmin || isStock || isPedidos ? "/home" : "/productos");
+      navigate(target, { replace: true });
     }
-  }, [isAuthenticated, navigate, redirectTo]);
+  }, [isAuthenticated, isAdmin, isStock, isPedidos, explicitRedirect, navigate]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
