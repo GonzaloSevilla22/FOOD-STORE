@@ -43,7 +43,7 @@ export function MisPedidosPage(): JSX.Element {
     if (searchParams.get("payment") === "success") {
       sessionStorage.removeItem("prev_cart");
       sessionStorage.removeItem("checkout_pedido_id");
-      limpiarCarrito(false);
+      limpiarCarrito();
       searchParams.delete("payment");
       setSearchParams(searchParams, { replace: true });
     }

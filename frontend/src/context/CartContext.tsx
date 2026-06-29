@@ -7,8 +7,8 @@ export interface CartContextValue {
   total: number;
   agregarProducto: (producto: CartItem) => void;
   removerProducto: (producto_id: number) => void;
-  modificarCantidad: (producto_id: number, cantidad: number) => Promise<void>;
-  limpiarCarrito: (liberar?: boolean) => void;
+  modificarCantidad: (producto_id: number, cantidad: number) => void;
+  limpiarCarrito: () => void;
 }
 
 /**

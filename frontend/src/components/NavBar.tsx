@@ -39,9 +39,9 @@ export function NavBar(): JSX.Element {
               </span>
             )}
           </div>
-          {user ? (
-            <div className="flex items-center gap-2">
-              <ThemeToggle />
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            {user ? (
               <button
                 type="button"
                 onClick={() => { logout(); navigate("/"); }}
@@ -49,15 +49,15 @@ export function NavBar(): JSX.Element {
               >
                 Salir
               </button>
-            </div>
-          ) : (
-            <NavLink
-              to="/login"
-              className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-medium text-white shadow-sm transition-all duration-150 hover:bg-orange-600"
-            >
-              Ingresar
-            </NavLink>
-          )}
+            ) : (
+              <NavLink
+                to="/login"
+                className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-medium text-white shadow-sm transition-all duration-150 hover:bg-orange-600"
+              >
+                Ingresar
+              </NavLink>
+            )}
+          </div>
         </div>
 
         <div className={`grid transition-all duration-200 ${open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}>

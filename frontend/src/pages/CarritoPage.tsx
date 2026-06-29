@@ -137,7 +137,7 @@ export function CarritoPage(): JSX.Element {
                 variant="outline"
                 size="sm"
                 disabled={item.cantidad <= 1}
-                onClick={() => modificarCantidad(item.producto_id, item.cantidad - 1).catch(() => toast.error("No hay más stock disponible"))}
+                onClick={() => modificarCantidad(item.producto_id, item.cantidad - 1)}
               >
                 −
               </Button>
@@ -148,7 +148,7 @@ export function CarritoPage(): JSX.Element {
                 onChange={(e) => {
                   const val = parseInt(e.target.value);
                   if (!isNaN(val) && val >= 1) {
-                    modificarCantidad(item.producto_id, val).catch(() => toast.error("No hay más stock disponible"));
+                    modificarCantidad(item.producto_id, val);
                   }
                 }}
                 className="w-14 rounded-lg border border-gray-200 px-2 py-1.5 text-center text-sm tabular-nums focus:border-brand-400 focus:outline-none dark:border-surface-border dark:bg-surface-card dark:text-gray-100"
@@ -156,7 +156,7 @@ export function CarritoPage(): JSX.Element {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => modificarCantidad(item.producto_id, item.cantidad + 1).catch(() => toast.error("No hay más stock disponible"))}
+                onClick={() => modificarCantidad(item.producto_id, item.cantidad + 1)}
               >
                 +
               </Button>

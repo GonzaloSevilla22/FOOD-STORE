@@ -1,6 +1,5 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import { liberarStock, reservarStock } from "../services/api";
 
 /** Clave de persistencia del carrito (items completos — consigna §12). */
 const CART_STORAGE_KEY = "food_store_cart";
@@ -17,8 +16,8 @@ interface CartStoreState {
   items: CartItem[];
   agregarProducto: (producto: CartItem) => void;
   removerProducto: (producto_id: number) => void;
-  modificarCantidad: (producto_id: number, cantidad: number) => Promise<void>;
-  limpiarCarrito: (liberar?: boolean) => void;
+  modificarCantidad: (producto_id: number, cantidad: number) => void;
+  limpiarCarrito: () => void;
   /** Selector: total a pagar. Consumir como `useCartStore((s) => s.total())`. */
   total: () => number;
   /** Selector: cantidad total de unidades en el carrito. */
@@ -53,29 +52,18 @@ export const useCartStore = create<CartStoreState>()(
         }),
 
       removerProducto: (producto_id) => {
-        const item = get().items.find((i) => i.producto_id === producto_id);
-        if (item) {
-          liberarStock(item.producto_id, item.cantidad).catch(() => {});
-        }
         set((state) => ({ items: state.items.filter((item) => item.producto_id !== producto_id) }));
       },
 
-      modificarCantidad: async (producto_id, cantidad) => {
+      modificarCantidad: (producto_id, cantidad) => {
         const item = get().items.find((i) => i.producto_id === producto_id);
         if (!item) return;
 
         if (cantidad <= 0) {
-          await liberarStock(producto_id, item.cantidad);
           set((state) => ({
             items: state.items.filter((i) => i.producto_id !== producto_id),
           }));
           return;
-        }
-
-        if (cantidad > item.cantidad) {
-          await reservarStock(producto_id, cantidad - item.cantidad);
-        } else if (cantidad < item.cantidad) {
-          await liberarStock(producto_id, item.cantidad - cantidad);
         }
 
         set((state) => ({
@@ -85,13 +73,7 @@ export const useCartStore = create<CartStoreState>()(
         }));
       },
 
-      limpiarCarrito: (liberar = true) => {
-        if (liberar) {
-          const items = get().items;
-          items.forEach((item) => {
-            liberarStock(item.producto_id, item.cantidad).catch(() => {});
-          });
-        }
+      limpiarCarrito: () => {
         set({ items: [] });
       },
 

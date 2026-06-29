@@ -57,7 +57,9 @@ export default function PaymentPage() {
   useEffect(() => {
     if (pedidoQuery.data?.estado_codigo === "CANCELADO") {
       sessionStorage.removeItem('timer_start')
-      limpiarCarrito(false)
+      sessionStorage.removeItem('prev_cart')
+      sessionStorage.removeItem('checkout_pedido_id')
+      limpiarCarrito()
       toast.error("Hubo un error, por favor intente nuevamente mas tarde")
       navigate("/home")
     }
@@ -66,7 +68,9 @@ export default function PaymentPage() {
   useEffect(() => {
     if (paymentSuccess) {
       sessionStorage.removeItem('timer_start')
-      limpiarCarrito(false)
+      sessionStorage.removeItem('prev_cart')
+      sessionStorage.removeItem('checkout_pedido_id')
+      limpiarCarrito()
     }
   }, [paymentSuccess, limpiarCarrito])
 
@@ -99,7 +103,9 @@ export default function PaymentPage() {
     if (esConfirmado || paymentSuccess) return
 
     sessionStorage.removeItem('timer_start')
-    limpiarCarrito(false)
+    sessionStorage.removeItem('prev_cart')
+    sessionStorage.removeItem('checkout_pedido_id')
+    limpiarCarrito()
     cancelarPedido(Number(orderId), "Tiempo de pago agotado").catch(() => {})
     navigate("/tiempo-agotado", { replace: true })
   }, [timeLeft, orderId, navigate, pedidoQuery.data?.estado_codigo, paymentSuccess, limpiarCarrito])
@@ -108,7 +114,9 @@ export default function PaymentPage() {
     const codigo = pedidoQuery.data?.estado_codigo
     if (codigo === "CONFIRMADO" || codigo === "ENTREGADO" || codigo === "CANCELADO") {
       sessionStorage.removeItem('timer_start')
-      limpiarCarrito(false)
+      sessionStorage.removeItem('prev_cart')
+      sessionStorage.removeItem('checkout_pedido_id')
+      limpiarCarrito()
     }
   }, [pedidoQuery.data?.estado_codigo, limpiarCarrito])
 
@@ -178,7 +186,7 @@ export default function PaymentPage() {
   if (error || pedidoQuery.isError || !pedidoQuery.data) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-orange-50 via-amber-50 to-stone-100 px-4 text-center dark:from-gray-950 dark:via-gray-900 dark:to-gray-950">
-        <h1 className="mb-2 font-display text-2xl font-bold text-brand-900 dark:text-brand-200">Pedido no encontrado</h1>
+        <h1 className="mb-2 font-display text-2xl font-bold text-brand-900 dark:text-brand-200">No pudimos realizar tu pedido...</h1>
         <p className="mb-6 text-sm text-slate-600 dark:text-gray-300">{error || "No se pudo cargar la información"}</p>
         <Link to="/" className="rounded-lg bg-brand-400 px-6 py-2 text-sm font-medium text-white hover:bg-brand-500">Volver al Catálogo</Link>
       </div>
