@@ -20,7 +20,7 @@ uvicorn main:app --reload --port 8000
 ## 3. Frontend (Terminal 2)
 ```bash
 cd frontend
-npm install
+npm run dev
 npm run dev
 ```
 

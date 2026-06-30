@@ -571,7 +571,7 @@ class PedidoService:
                 )
 
             producto_ids_afectados: set[int] = set()
-            if pedido.estado_codigo in [STATE_PENDIENTE, STATE_CONFIRMADO, STATE_EN_PREP, STATE_ESPERANDO_CLIENTE]:
+            if pedido.estado_codigo in [STATE_CONFIRMADO, STATE_EN_PREP, STATE_ESPERANDO_CLIENTE]:
                 detalles = uow.detalles.get_by_pedido_id(pedido_id)
                 for detalle in detalles:
                     self._aplicar_stock(uow, detalle.producto_id, detalle.cantidad, multiplicador=-1)
